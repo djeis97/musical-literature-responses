@@ -8,15 +8,27 @@
             [overtone.inst.drum :as drums]
             [overtone.inst.piano :as piano]))
 
-
-
 (zero-conf-on)
 (def metro (metronome 110))
-(def controls (atom {"/1/fader2" 0.2 "/1/fader3" 0.2 "/1/fader4" 0.5}))
+(def controls (atom {"/1/fader1" 0.1 "/1/fader2" 0.2 "/1/fader3" 0.2 "/1/fader4" 0.5}))
 
+(def server (osc-server 44100 "osc-clj"))
 (osc-listen server (fn [e]
                      (swap! controls assoc (:path e) (first (:args e))))
             :osc-controls)
+
+(defn attach-bus-controls [bus update-fn & rest]
+  {:pre [(bus? bus) (ifn? update-fn)]}
+  (add-watch controls [bus ::bus-controls]
+             (fn [[bus _] _c old new]
+               (let [o (update-fn old)
+                     n (update-fn new)]
+                 (when (not= o n)
+                   (control-bus-set! bus n))))))
+
+(defn detach-bus-controls [bus]
+  (remove-watch controls [bus ::bus-controls]))
+
 
 (defn control [n]
   (get @controls n 0.0))
@@ -40,7 +52,16 @@
             )
   )
 
+
+
 (definst warbly-sin [amp 0.3 hi-freq 880 hi-detune 1.0 lo-detune 1.005]
   (* amp (+ (sin-osc [hi-freq (* hi-freq hi-detune)])
             (sin-osc [(* hi-freq 0.25) (* hi-freq lo-detune 0.25)]))))
 
+(def main-sin (warbly-sin))
+(def main-sin-amp-bus (control-bus))
+(def detune-bus (control-bus))
+(attach-bus-controls main-sin-amp-bus #(* (% "/1/fader1") (% "/1/toggle1")))
+(attach-bus-controls detune-bus #(+ 1 (* 0.01 (% "/1/fader2" 0.0) (% "/1/toggle2" 0.0))))
+(node-map-controls main-sin [:amp main-sin-amp-bus])
+(node-map-controls main-sin [:lo-detune detune-bus])
