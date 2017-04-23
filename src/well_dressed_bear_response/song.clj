@@ -66,7 +66,57 @@
 (node-map-controls main-sin [:amp main-sin-amp-bus])
 (node-map-controls main-sin [:lo-detune detune-bus])
 
+(def main-melody
+  (let [pitches
+        [88 89 84 83 :_]
+        durations
+        [4 2 6 8 8]
+        times (reductions + 0 durations)]
+    (map vector times pitches durations)))
+
+(def main-melodies
+  {:base (let [pitches
+               [88 89 84 83 :_]
+               durations
+               [4 2 6 15 1]
+               times (reductions + 0 durations)]
+           (map vector times pitches durations))
+   :aug1 (let [pitches
+               [88 89 84 88 83 :_]
+               durations
+               [4 2 6 1/4 59/4 1]
+               times (reductions + 0 durations)]
+           (map vector times pitches durations))
+   :aug2 (let [pitches
+               [88 89 84 83 81 :_]
+               durations
+               [4 2 6 4 11 1]
+               times (reductions + 0 durations)]
+           (map vector times pitches durations))})
+
+(def main-markov-model
+  {:base [:base :base :aug1 :aug2]
+   :aug1 [:base]
+   :aug2 [:base]})
 
 (defn loop-apply [now func & rest]
   (let [[len & rest] (apply func now rest)]
     (apply-by (metro (+ now len)) #'loop-apply (+ now len) func rest)))
+
+(defn play-main [now mel-ref mel-id]
+  (let [play-note (fn [[beat midi dur]]
+                    (if (not (= midi :_))
+                      (let [synth (at (metro (+ now beat))
+                                      (let [note (midi->hz midi)]
+                                        (cs80lead note
+                                                  :amp (* 2.0 (control "/1/fader3"))
+                                                  :att (* 1.0 dur)
+                                                  :decay 1.0
+                                                  :sus 0.05
+                                                  :rel 0.2)))]
+                        (at (metro (+ now beat dur))
+                            (ctl synth :gate -5.0)))))
+        last (last (mel-id @mel-ref))
+        len (+ (last 0) (last 2))]
+    (dorun (map play-note (mel-id @mel-ref)))
+    [len mel-ref (rand-nth (mel-id main-markov-model))]))
