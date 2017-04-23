@@ -65,3 +65,8 @@
 (attach-bus-controls detune-bus #(+ 1 (* 0.01 (% "/1/fader2" 0.0) (% "/1/toggle2" 0.0))))
 (node-map-controls main-sin [:amp main-sin-amp-bus])
 (node-map-controls main-sin [:lo-detune detune-bus])
+
+
+(defn loop-apply [now func & rest]
+  (let [[len & rest] (apply func now rest)]
+    (apply-by (metro (+ now len)) #'loop-apply (+ now len) func rest)))
