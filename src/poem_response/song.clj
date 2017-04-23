@@ -33,6 +33,18 @@
     (detect-silence snd 0.005 :action FREE)
     (* 1 snd)))
 
+
+(definst clap
+  [low {:default 7500 :min 100 :max 10000 :step 1}
+   hi  {:default 1500 :min 100 :max 10000 :step 1}
+   amp {:default 0.3 :min 0.001 :max 1 :step 0.01}
+   decay {:default 0.6 :min 0.1 :max 0.8 :step 0.001}]
+  (let [noise      (bpf (lpf (white-noise) low) hi)
+        clap-env   (line 1 0 decay :action FREE)
+        noise-envs (map #(envelope [0 0 1 0] [(* % 0.01) 0 0.04]) (range 8))
+        claps      (apply + (* noise (map env-gen noise-envs)))]
+    (* amp claps clap-env)))
+
 ; Arrangement
 (defmethod live/play-note :bass [{pitch :pitch vol :vol}] (drums/kick4 pitch 0.5))
 (defmethod live/play-note :accompaniment [{pitch :pitch seconds :duration vol :vol}]
@@ -41,6 +53,7 @@
   (growing pitch seconds vol))
 (defmethod live/play-note :melody [{pitch :pitch seconds :duration vol :vol}]
   (piano pitch (* 80 vol) seconds))
+(defmethod live/play-note :drums [_] (drums/closed-hat2 0.5))
 
 ; Composition
 (def progression [0 0 3 0 4 0])
@@ -96,53 +109,60 @@
        (where :pitch (scale/from root))
        (all :part :growing-accompaniment)))
 
-(defn bass-line [root]
-  (->> (phrase [1/3 1/3 1/3 1 1] [2 0 0 2 0])
-       (where :pitch (scale/from root))
-       (where :pitch (comp scale/lower scale/lower))
-       (all :part :bass)))
+(defn drums []
+  (->> (phrase (cycle [1/3 1/3 1/3 1 1]) (take (* 5 8) (cycle [0.1 0.1 0.1 0.1 0.1])))
+       (all :part :drums)))
 
-; Track
-(def track
-  (->> (melody 0)
-       (then (->> (melody 0)
-                  (with (all :vol 0.6 (acc3 7)))))
-       (then (->> (melody 0)
-                  (with (all :vol 0.95 (acc1 7)))))
-       (then (->> (melody 0)
-                  (with (all :vol 0.7 (acc2 7)))))
-       (then (->> (melody 0)
-                  (with (all :vol 0.3 (acc2 7)))
-                  (with (all :vol 0.95 (acc1 7)))))
-       (then (->> (melody 0)
-                  (with (all :vol 0.6 (acc3 7)))
-                  (with (all :vol 0.9 (acc1 7)))
-                  (with (all :vol 0.7 (acc2 -7)))))
-       (then (melody -7))
-       (then (->> (melody -7)
-                  (with (all :vol 0.6 (acc3 0)))))
-       (then (->> (melody -7)
-                  (with (all :vol 0.6 (acc3 0)))
-                  (with (all :vol 0.8 (acc1 7)))))
-       (then (melody 7))
-       (then (->> (melody 7)
-                  (with (all :vol 0.6 (acc3 0)))))
-       (then (->> (melody 7)
-                  (with (all :vol 0.6 (acc3 0)))
-                  (with (all :vol 0.8 (acc1 0)))))
-       (then (->> (melody 7)
-                  (with (all :vol 0.6 (acc3 0)))
-                  (with (all :vol 0.8 (acc1 0)))
-                  (with (all :vol 0.6 (acc2 -7)))))
-       (then (->> (melody 0)
-                  (with (all :vol 0.6 (acc3 0)))
-                  (with (all :vol 0.8 (acc1 0)))
-                  (with (all :vol 0.6 (acc2 -7)))))
-       (then (melody 0))
+
+(defn final-transform [notes]
+  (->> notes
        (where :pitch (comp temperament/equal scale/A scale/minor))
        (where :time (bpm 100))
        (where :duration (bpm 100))
        (wherever (comp not :vol), :vol (is 1.0))))
+
+(defn mel-with-drums [root]
+  (->> (melody root) (with (drums))))
+
+; Track
+(def track
+  (->>
+   (mel-with-drums 0)
+   (then (->> (mel-with-drums 0)
+              (with (all :vol 0.6 (acc3 7)))))
+   (then (->> (mel-with-drums 0)
+              (with (all :vol 0.95 (acc1 7)))))
+   (then (->> (mel-with-drums 0)
+              (with (all :vol 0.7 (acc2 7)))))
+   (then (->> (mel-with-drums 0)
+              (with (all :vol 0.3 (acc2 7)))
+              (with (all :vol 0.95 (acc1 7)))))
+   (then (->> (mel-with-drums 0)
+              (with (all :vol 0.6 (acc3 7)))
+              (with (all :vol 0.9 (acc1 7)))
+              (with (all :vol 0.7 (acc2 -7)))))
+   (then (mel-with-drums -7))
+   (then (->> (mel-with-drums -7)
+              (with (all :vol 0.6 (acc3 0)))))
+   (then (->> (mel-with-drums -7)
+              (with (all :vol 0.6 (acc3 0)))
+              (with (all :vol 0.8 (acc1 7)))))
+   (then (mel-with-drums 7))
+   (then (->> (mel-with-drums 7)
+              (with (all :vol 0.6 (acc3 0)))))
+   (then (->> (mel-with-drums 7)
+              (with (all :vol 0.6 (acc3 0)))
+              (with (all :vol 0.8 (acc1 0)))))
+   (then (->> (mel-with-drums 7)
+              (with (all :vol 0.6 (acc3 0)))
+              (with (all :vol 0.8 (acc1 0)))
+              (with (all :vol 0.6 (acc2 -7)))))
+   (then (->> (mel-with-drums 0)
+              (with (all :vol 0.6 (acc3 0)))
+              (with (all :vol 0.8 (acc1 0)))
+              (with (all :vol 0.6 (acc2 -7)))))
+   (then (mel-with-drums 0))
+   final-transform))
 
 (defn -main []
   (live/play track))
